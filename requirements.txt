@@ -1,0 +1,4 @@
+flask
+flask-socketio
+requests
+python-dotenv

@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Game Match</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#060910;color:#e8edf5;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(76,158,255,.28)}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#1a5fa0;border-radius:2px}
+
+.app{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 16px;position:relative;overflow:hidden}
+
+.wrap{position:relative;z-index:1;width:100%;max-width:460px}
+
+/* phases */
+.phase{display:none}.phase.active{display:block;animation:up .45s ease}
+@keyframes up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pop{0%{opacity:0;transform:scale(.88)}70%{transform:scale(1.03)}100%{opacity:1;transform:scale(1)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* inputs */
+.field{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:8px;color:#e8edf5;padding:11px 14px;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color .2s,background .2s}
+.field:focus{border-color:#4c9eff;background:rgba(76,158,255,.06)}
+.field::placeholder{color:rgba(255,255,255,.2)}
+
+/* buttons */
+.btn{border:none;border-radius:8px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:13px 28px;cursor:pointer;transition:background .2s,transform .1s;width:100%}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.38;pointer-events:none}
+.btn-blue{background:#1a5fa0;color:#fff}.btn-blue:hover{background:#2171b9}
+.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.45)}.btn-ghost:hover{border-color:rgba(255,255,255,.22);color:rgba(255,255,255,.75);background:rgba(255,255,255,.03)}
+.btn-sm{width:auto;padding:8px 18px;font-size:11px}
+
+/* swipe buttons */
+.swipe-btn{border:none;border-radius:50%;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;width:70px;height:70px;font-size:26px;transition:background .18s,transform .15s}
+.swipe-btn:active{transform:scale(.93)}
+.swipe-btn:disabled{opacity:.3;pointer-events:none}
+.btn-like{background:#0d7a50}.btn-like:hover{background:#10a068}
+.btn-pass{background:#9b1c31}.btn-pass:hover{background:#bf2240}
+
+/* labels */
+.label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.3);text-transform:uppercase;display:block;margin-bottom:7px}
+
+/* logo */
+.logo{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:10px}
+.logo h1{font-family:'Bebas Neue',sans-serif;font-size:40px;letter-spacing:4px;color:#e8edf5;line-height:1}
+.logo-sub{font-size:13px;color:rgba(255,255,255,.28);letter-spacing:.5px;text-align:center;margin-bottom:36px}
+
+/* room code badge */
+.code-badge{background:rgba(76,158,255,.08);border:1px solid rgba(76,158,255,.22);border-radius:12px;padding:18px 24px;text-align:center;margin-bottom:24px}
+.code-badge .code{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:10px;color:#4c9eff;line-height:1}
+.code-badge .code-hint{font-size:12px;color:rgba(255,255,255,.3);margin-top:4px}
+
+/* player chips */
+.player-list{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.player-row{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 14px;transition:border-color .2s}
+.player-row.mine{border-color:rgba(76,158,255,.3);background:rgba(76,158,255,.05)}
+.player-avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;background:#0c1422}
+.player-avatar-ph{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0}
+.player-name{flex:1;font-size:14px;font-weight:500}
+.player-badge{font-size:11px;font-family:'Space Mono',monospace;padding:3px 9px;border-radius:20px;flex-shrink:0}
+.badge-mine{background:rgba(76,158,255,.18);color:#4c9eff}
+.badge-taken{background:rgba(255,255,255,.07);color:rgba(255,255,255,.3)}
+.badge-free{background:rgba(13,122,80,.18);color:#10a068;cursor:pointer;transition:background .18s}
+.badge-free:hover{background:rgba(13,122,80,.32)}
+
+/* progress bar */
+.prog-wrap{width:100%;height:3px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden;margin-bottom:8px}
+.prog-bar{height:100%;border-radius:2px;background:linear-gradient(90deg,#1a5fa0,#4c9eff);transition:width .4s ease}
+
+/* spinner */
+.spinner{width:48px;height:48px;border-radius:50%;border:2.5px solid rgba(76,158,255,.12);border-top-color:#4c9eff;animation:spin .75s linear infinite;margin:0 auto 20px}
+
+/* game card */
+#card-wrap{border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.06);background:#0c1220;cursor:grab;user-select:none;will-change:transform;touch-action:pan-y}
+#card-wrap:active{cursor:grabbing}
+.card-img-wrap{position:relative;width:100%;aspect-ratio:460/215;background:#0a1020;overflow:hidden}
+.card-img-wrap img{width:100%;height:100%;object-fit:cover;display:block}
+.card-img-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:rgba(255,255,255,.2)}
+.card-info{padding:16px 20px 20px}
+.card-title{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.5px;line-height:1.15;margin-bottom:8px}
+.card-meta{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.card-meta a{font-size:12px;color:#4c9eff;text-decoration:none;font-family:'Space Mono',monospace}
+.card-meta span{font-size:12px;color:rgba(255,255,255,.3);font-family:'Space Mono',monospace}
+
+/* swipe overlays */
+.overlay{position:absolute;inset:0;pointer-events:none;display:flex;align-items:flex-start;padding:20px}
+.overlay-play{justify-content:flex-start;background:rgba(13,120,76,0)}
+.overlay-pass{justify-content:flex-end;background:rgba(155,28,49,0)}
+.overlay-label{border:3px solid;border-radius:8px;padding:3px 14px;font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:3px;background:rgba(0,0,0,.4)}
+.overlay-play .overlay-label{color:#0d7a50;border-color:#0d7a50;transform:rotate(-12deg)}
+.overlay-pass .overlay-label{color:#9b1c31;border-color:#9b1c31;transform:rotate(12deg)}
+
+/* error toast */
+#toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#9b1c31;color:#fff;padding:11px 22px;border-radius:10px;font-size:14px;z-index:99;display:none;max-width:calc(100vw - 40px);text-align:center;animation:fadeIn .25s ease}
+
+/* results */
+.results-list{max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:2px;margin-bottom:20px}
+.result-row{display:flex;align-items:center;gap:12px;background:rgba(13,120,76,.08);border:1px solid rgba(13,120,76,.22);border-radius:10px;padding:10px 14px;text-decoration:none;color:#e8edf5;transition:background .18s,border-color .18s}
+.result-row:hover{background:rgba(76,158,255,.07);border-color:rgba(76,158,255,.25)}
+.result-row.no-match{background:rgba(255,255,255,.02);border-color:rgba(255,255,255,.05)}
+.result-thumb{width:80px;height:37px;object-fit:cover;border-radius:4px;flex-shrink:0;background:#0a1020}
+.result-name{flex:1;font-size:14px;font-weight:500;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.result-votes{display:flex;gap:4px;margin-top:3px;flex-wrap:wrap}
+.vote-chip{font-size:10px;font-family:'Space Mono',monospace}
+
+/* waiting screen */
+.waiting-players{display:flex;flex-direction:column;gap:8px;margin:20px 0}
+.waiting-row{display:flex;align-items:center;gap:12px;padding:8px 0}
+.waiting-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.dot-done{background:#0d7a50}
+.dot-waiting{background:rgba(255,255,255,.18);animation:pulse 1.5s ease infinite}
+
+/* hint box */
+.hint{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px 16px;font-size:12px;color:rgba(255,255,255,.25);line-height:1.7;margin-top:18px}
+.hint strong{color:rgba(255,255,255,.4)}
+
+.mt-12{margin-top:12px}.mt-16{margin-top:16px}.mt-20{margin-top:20px}.mt-24{margin-top:24px}
+.text-center{text-align:center}
+.text-muted{color:rgba(255,255,255,.3);font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bg-glow"></div>
+  <div class="bg-grid"></div>
+  <div class="wrap">
+
+    <!-- ── HOME ─────────────────────────────────────── -->
+    <div class="phase active" id="ph-home">
+      <div class="logo">
+        <svg width="38" height="38" viewBox="0 0 38 38">
+          <circle cx="19" cy="19" r="19" fill="rgba(26,95,160,.7)"/>
+          <path d="M9 15 Q19 9 29 15 L29 23 Q19 29 9 23Z" fill="rgba(76,158,255,.22)"/>
+          <circle cx="15" cy="19" r="2.8" fill="#4c9eff"/>
+          <circle cx="23" cy="19" r="2.8" fill="#4c9eff"/>
+          <path d="M9 19h4m5 0h4m5 0h4" stroke="#4c9eff" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <h1>GAME MATCH</h1>
+      </div>
+      <p class="logo-sub">Find a game your whole group wants to play</p>
+
+      <div style="margin-bottom:22px">
+        <span class="label">Start a new room</span>
+        <button class="btn btn-blue" onclick="showPhase('ph-setup')">Create room</button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+        <div style="flex:1;height:1px;background:rgba(255,255,255,.07)"></div>
+        <span style="font-size:12px;color:rgba(255,255,255,.2)">or join an existing one</span>
+        <div style="flex:1;height:1px;background:rgba(255,255,255,.07)"></div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <input class="field" id="join-code" maxlength="5" placeholder="Room code" style="text-transform:uppercase;letter-spacing:3px;font-family:'Space Mono',monospace;font-size:16px;text-align:center">
+        <button class="btn btn-blue btn-sm" style="width:auto;white-space:nowrap" onclick="joinRoom()">Join →</button>
+      </div>
+
+      <div class="hint mt-20">
+        <strong>How it works:</strong> The host creates a room and adds everyone's Steam profiles. Each player opens the site, enters the room code, and swipes on their own device. Results appear when everyone's done.
+      </div>
+    </div>
+
+    <!-- ── SETUP ─────────────────────────────────────── -->
+    <div class="phase" id="ph-setup">
+      <div class="logo"><h1>CREATE ROOM</h1></div>
+      <p class="logo-sub">Enter everyone's Steam profiles to find shared games</p>
+
+      <div style="margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="label" style="margin:0">Steam Profiles</span>
+          <span style="font-size:11px;color:rgba(255,255,255,.18)">ID, username, or full URL</span>
+        </div>
+        <div id="player-inputs" style="display:flex;flex-direction:column;gap:8px"></div>
+        <button class="btn btn-ghost mt-12" id="add-player-btn" onclick="addPlayerInput()">+ Add player</button>
+      </div>
+
+      <button class="btn btn-blue" id="create-btn" onclick="createRoom()">Create room & find shared games →</button>
+      <button class="btn btn-ghost mt-12" onclick="showPhase('ph-home')">← Back</button>
+    </div>
+
+    <!-- ── LOADING ─────────────────────────────────────── -->
+    <div class="phase" id="ph-loading">
+      <div class="text-center" style="margin-bottom:32px">
+        <div class="code-badge">
+          <div class="code" id="loading-code">-----</div>
+          <div class="code-hint">Share this code while we fetch the games</div>
+        </div>
+        <div class="spinner"></div>
+        <p id="loading-msg" style="font-size:15px;color:rgba(255,255,255,.6);margin-bottom:18px">Starting…</p>
+        <div class="prog-wrap"><div class="prog-bar" id="loading-bar" style="width:0%"></div></div>
+        <p id="loading-pct" style="font-size:11px;color:rgba(255,255,255,.2);margin-top:6px;font-family:'Space Mono',monospace">0%</p>
+      </div>
+    </div>
+
+    <!-- ── LOBBY ─────────────────────────────────────── -->
+    <div class="phase" id="ph-lobby">
+      <div style="text-align:center;margin-bottom:24px">
+        <div class="code-badge">
+          <div class="code" id="lobby-code">-----</div>
+          <div class="code-hint">Everyone open this site and enter the code</div>
+        </div>
+        <p style="font-size:14px;color:rgba(255,255,255,.5)" id="lobby-game-count"></p>
+      </div>
+
+      <span class="label">Players — tap your name to claim your slot</span>
+      <div class="player-list" id="lobby-players"></div>
+
+      <div id="lobby-start-wrap" style="display:none">
+        <button class="btn btn-blue" onclick="startSwiping()">Start swiping →</button>
+      </div>
+      <p id="lobby-waiting-msg" class="text-muted text-center mt-12"></p>
+    </div>
+
+    <!-- ── SWIPING ─────────────────────────────────────── -->
+    <div class="phase" id="ph-swiping">
+      <!-- header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div id="swipe-avatar-wrap"></div>
+          <div>
+            <p id="swipe-player-name" style="font-size:14px;font-weight:600"></p>
+            <p id="swipe-room-code" style="font-size:11px;color:rgba(255,255,255,.28);font-family:'Space Mono',monospace"></p>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <p id="swipe-progress-text" style="font-size:11px;color:rgba(255,255,255,.28);font-family:'Space Mono',monospace"></p>
+          <div style="width:80px;height:2.5px;background:rgba(255,255,255,.05);border-radius:2px;margin-top:4px">
+            <div id="swipe-progress-bar" style="height:100%;border-radius:2px;background:#4c9eff;transition:width .25s;width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- card -->
+      <div id="card-wrap"
+        onmousedown="dragStart(event)" onmousemove="dragMove(event)" onmouseup="dragEnd(event)" onmouseleave="dragEnd(event)"
+        ontouchstart="dragStart(event)" ontouchmove="dragMove(event)" ontouchend="dragEnd(event)">
+        <div class="card-img-wrap">
+          <img id="card-img" src="" alt="" onerror="this.style.display='none';document.getElementById('card-img-ph').style.display='flex'">
+          <div class="card-img-ph" id="card-img-ph" style="display:none">
+            <span style="font-size:48px">🎮</span>
+            <span id="card-ph-name" style="font-size:13px"></span>
+          </div>
+          <div class="overlay overlay-play" id="ov-play" style="opacity:0"><div class="overlay-label">PLAY</div></div>
+          <div class="overlay overlay-pass" id="ov-pass" style="opacity:0"><div class="overlay-label">SKIP</div></div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" id="card-title"></div>
+          <div class="card-meta">
+            <span id="card-playtime"></span>
+            <a id="card-link" href="#" target="_blank" onclick="event.stopPropagation()">Steam page ↗</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- swipe controls -->
+      <div style="display:flex;justify-content:center;align-items:center;gap:36px;margin-top:24px">
+        <button class="swipe-btn btn-pass" id="btn-pass" onclick="vote(false)" title="Skip (←)">✕</button>
+        <span style="font-size:11px;color:rgba(255,255,255,.18);font-family:'Space Mono',monospace;text-align:center;line-height:1.6">drag or<br>← →</span>
+        <button class="swipe-btn btn-like" id="btn-like" onclick="vote(true)" title="Play (→)">✓</button>
+      </div>
+    </div>
+
+    <!-- ── WAITING ─────────────────────────────────────── -->
+    <div class="phase" id="ph-waiting">
+      <div class="text-center" style="margin-bottom:28px">
+        <div style="font-size:52px;margin-bottom:16px">⏳</div>
+        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:3px;margin-bottom:8px">You're done!</h2>
+        <p class="text-muted">Waiting for the rest of the group…</p>
+      </div>
+      <div class="waiting-players" id="waiting-players"></div>
+      <div class="prog-wrap"><div class="prog-bar" id="waiting-bar" style="width:0%"></div></div>
+      <p id="waiting-count" style="font-size:12px;color:rgba(255,255,255,.25);font-family:'Space Mono',monospace;text-align:center;margin-top:6px"></p>
+    </div>
+
+    <!-- ── RESULTS ─────────────────────────────────────── -->
+    <div class="phase" id="ph-results">
+      <div class="text-center" style="margin-bottom:24px">
+        <h1 id="results-title" style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:3px;margin-bottom:6px"></h1>
+        <p id="results-sub" class="text-muted"></p>
+        <div id="results-avatars" style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap"></div>
+      </div>
+      <div class="results-list" id="results-list"></div>
+      <button class="btn btn-blue" onclick="resetApp()">Play again</button>
+    </div>
+
+  </div><!-- .wrap -->
+</div><!-- .app -->
+
+<div id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────
+const state = {
+  socket:       null,
+  roomCode:     "",
+  myPlayer:     "",
+  players:      [],
+  games:        [],
+  gameIdx:      0,
+  votes:        {},           // appid -> bool
+  animating:    false,
+  drag:         { active: false, startX: 0, offsetX: 0 },
+};
+
+// Player accent colors
+const COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899"];
+
+// ── Init ─────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  state.socket = io();
+  bindSocketEvents();
+
+  // Setup player inputs
+  addPlayerInput(); addPlayerInput();
+
+  // Keyboard swipe
+  document.addEventListener("keydown", e => {
+    if (document.getElementById("ph-swiping").classList.contains("active")) {
+      if (e.key === "ArrowRight") vote(true);
+      if (e.key === "ArrowLeft")  vote(false);
+    }
+  });
+
+  document.getElementById("join-code").addEventListener("keydown", e => {
+    if (e.key === "Enter") joinRoom();
+  });
+});
+
+// ── Socket events ─────────────────────────────────────────────────────────
+function bindSocketEvents() {
+  const s = state.socket;
+
+  s.on("room_created", d => {
+    state.roomCode = d.code;
+    document.getElementById("loading-code").textContent = d.code;
+    showPhase("ph-loading");
+  });
+
+  s.on("loading_status", d => {
+    document.getElementById("loading-msg").textContent = d.msg;
+    document.getElementById("loading-bar").style.width = d.pct + "%";
+    document.getElementById("loading-pct").textContent = Math.round(d.pct) + "%";
+  });
+
+  s.on("setup_done", d => {
+    state.players = d.players;
+    state.games   = d.games;
+    document.getElementById("lobby-code").textContent       = state.roomCode;
+    document.getElementById("lobby-game-count").textContent = `${d.game_count} shared games found`;
+    renderLobby([]);
+    showPhase("ph-lobby");
+  });
+
+  s.on("joined", d => {
+    state.players = d.players;
+    state.games   = d.games;
+    if (d.phase === "loading") {
+      document.getElementById("loading-code").textContent = state.roomCode;
+      showPhase("ph-loading");
+    } else if (d.phase === "lobby") {
+      document.getElementById("lobby-code").textContent       = state.roomCode;
+      document.getElementById("lobby-game-count").textContent = `${d.game_count} shared games found`;
+      renderLobby(d.claimed_names || []);
+      showPhase("ph-lobby");
+    }
+  });
+
+  s.on("claim_update", d => {
+    renderLobby(d.claimed_names);
+  });
+
+  s.on("claimed_ok", d => {
+    state.myPlayer = d.player_name;
+    renderLobby(getClaimed());  // re-render with highlight
+    document.getElementById("lobby-start-wrap").style.display = "block";
+    document.getElementById("lobby-waiting-msg").textContent  = "";
+  });
+
+  s.on("progress_update", d => {
+    if (document.getElementById("ph-waiting").classList.contains("active")) {
+      updateWaiting(d);
+    }
+    // If results haven't come yet just wait
+  });
+
+  s.on("results", d => {
+    showResults(d);
+  });
+
+  s.on("error", d => {
+    showToast(d.msg);
+    // If we were loading, go back to setup
+    if (document.getElementById("ph-loading").classList.contains("active")) {
+      showPhase("ph-setup");
+    }
+  });
+}
+
+// ── Phase management ──────────────────────────────────────────────────────
+function showPhase(id) {
+  document.querySelectorAll(".phase").forEach(el => el.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  window.scrollTo(0, 0);
+}
+
+// ── Setup ─────────────────────────────────────────────────────────────────
+let playerCount = 0;
+
+function addPlayerInput() {
+  if (playerCount >= 6) return;
+  playerCount++;
+  const idx = playerCount;
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;gap:8px;align-items:center";
+  wrap.id = "pi-" + idx;
+  wrap.innerHTML = `
+    <div style="width:28px;height:28px;border-radius:50%;background:${COLORS[(idx-1)%COLORS.length]}22;border:1.5px solid ${COLORS[(idx-1)%COLORS.length]}55;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${COLORS[(idx-1)%COLORS.length]};font-family:'Space Mono',monospace;flex-shrink:0">${idx}</div>
+    <input class="field" placeholder="Player ${idx} — username, ID, or URL" id="pi-val-${idx}">
+    <button onclick="removePlayerInput(${idx})" style="background:none;border:none;color:rgba(255,255,255,.2);cursor:pointer;font-size:20px;padding:0 4px;line-height:1;transition:color .15s;flex-shrink:0" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='rgba(255,255,255,.2)'">×</button>
+  `;
+  document.getElementById("player-inputs").appendChild(wrap);
+  if (playerCount >= 6) document.getElementById("add-player-btn").style.display = "none";
+}
+
+function removePlayerInput(idx) {
+  const el = document.getElementById("pi-" + idx);
+  if (!el) return;
+  const total = document.getElementById("player-inputs").children.length;
+  if (total <= 2) return;
+  el.remove();
+  document.getElementById("add-player-btn").style.display = "";
+}
+
+function getPlayerInputs() {
+  return [...document.querySelectorAll("[id^='pi-val-']")]
+    .map(el => el.value.trim()).filter(Boolean);
+}
+
+function createRoom() {
+  const inputs = getPlayerInputs();
+  if (inputs.length < 2) { showToast("Add at least 2 Steam profiles"); return; }
+  state.socket.emit("create_room", { player_inputs: inputs });
+  document.getElementById("create-btn").disabled = true;
+  setTimeout(() => { document.getElementById("create-btn").disabled = false; }, 3000);
+}
+
+function joinRoom() {
+  const code = document.getElementById("join-code").value.trim().toUpperCase();
+  if (code.length < 4) { showToast("Enter a valid room code"); return; }
+  state.roomCode = code;
+  state.socket.emit("join_game", { code });
+}
+
+// ── Lobby ─────────────────────────────────────────────────────────────────
+function getClaimed() {
+  // We don't track this on client; server sends via claim_update
+  return window._claimed || [];
+}
+
+function renderLobby(claimedNames) {
+  window._claimed = claimedNames;
+  const list = document.getElementById("lobby-players");
+  list.innerHTML = "";
+
+  state.players.forEach((p, i) => {
+    const claimed = claimedNames.includes(p.name);
+    const isMe    = p.name === state.myPlayer;
+    const color   = COLORS[i % COLORS.length];
+
+    const row = document.createElement("div");
+    row.className = "player-row" + (isMe ? " mine" : "");
+    row.style.borderLeftWidth = "3px";
+    row.style.borderLeftStyle = "solid";
+    row.style.borderLeftColor = color + (isMe ? "cc" : "44");
+
+    const avatarHtml = p.avatar
+      ? `<img class="player-avatar" src="${p.avatar}" alt="">`
+      : `<div class="player-avatar-ph" style="background:${color}22;border:1.5px solid ${color}55;color:${color}">${p.name[0]}</div>`;
+
+    let badgeHtml;
+    if (isMe)         badgeHtml = `<span class="player-badge badge-mine">You ✓</span>`;
+    else if (claimed) badgeHtml = `<span class="player-badge badge-taken">Taken</span>`;
+    else              badgeHtml = `<span class="player-badge badge-free" onclick="claimPlayer('${p.name}')">Claim</span>`;
+
+    row.innerHTML = avatarHtml +
+      `<span class="player-name">${p.name}</span>` +
+      badgeHtml;
+
+    list.appendChild(row);
+  });
+
+  // Show waiting message if no player claimed yet
+  if (!state.myPlayer) {
+    document.getElementById("lobby-waiting-msg").textContent = "Tap your name above to claim your slot";
+    document.getElementById("lobby-start-wrap").style.display = "none";
+  }
+}
+
+function claimPlayer(name) {
+  state.socket.emit("claim_player", { code: state.roomCode, player_name: name });
+}
+
+function startSwiping() {
+  if (!state.myPlayer) { showToast("Claim your player slot first"); return; }
+  state.gameIdx = 0;
+  state.votes   = {};
+  state.animating = false;
+
+  const me = state.players.find(p => p.name === state.myPlayer);
+  const pi = state.players.indexOf(me);
+
+  // Set swipe header
+  document.getElementById("swipe-player-name").textContent = state.myPlayer;
+  document.getElementById("swipe-room-code").textContent   = "Room " + state.roomCode;
+
+  if (me?.avatar) {
+    document.getElementById("swipe-avatar-wrap").innerHTML =
+      `<img src="${me.avatar}" style="width:34px;height:34px;border-radius:50%;border:2px solid ${COLORS[pi%COLORS.length]};object-fit:cover">`;
+  } else {
+    document.getElementById("swipe-avatar-wrap").innerHTML =
+      `<div style="width:34px;height:34px;border-radius:50%;background:${COLORS[pi%COLORS.length]}22;border:2px solid ${COLORS[pi%COLORS.length]};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:${COLORS[pi%COLORS.length]}">${state.myPlayer[0]}</div>`;
+  }
+
+  showPhase("ph-swiping");
+  loadCard(0);
+}
+
+// ── Swiping ───────────────────────────────────────────────────────────────
+function loadCard(idx) {
+  if (idx >= state.games.length) { finishSwiping(); return; }
+  const g = state.games[idx];
+
+  // Reset image
+  const img = document.getElementById("card-img");
+  img.style.display = "";
+  document.getElementById("card-img-ph").style.display = "none";
+
+  img.src = `https://cdn.akamai.steamstatic.com/steam/apps/${g.appid}/header.jpg`;
+  document.getElementById("card-ph-name").textContent = g.name;
+  document.getElementById("card-title").textContent   = g.name;
+  document.getElementById("card-link").href = `https://store.steampowered.com/app/${g.appid}`;
+
+  const pt = g.playtime_forever || 0;
+  document.getElementById("card-playtime").textContent =
+    pt > 60 ? `⏱ ${Math.round(pt/60)}h avg` : "";
+
+  const pct = (idx / state.games.length) * 100;
+  document.getElementById("swipe-progress-bar").style.width  = pct + "%";
+  document.getElementById("swipe-progress-text").textContent = `${idx+1} / ${state.games.length}`;
+
+  // Reset card position
+  setCardTransform(0);
+  document.getElementById("ov-play").style.opacity = 0;
+  document.getElementById("ov-pass").style.opacity = 0;
+
+  // Preload next
+  if (idx + 1 < state.games.length) {
+    const preload = new Image();
+    preload.src = `https://cdn.akamai.steamstatic.com/steam/apps/${state.games[idx+1].appid}/header.jpg`;
+  }
+}
+
+function vote(liked) {
+  if (state.animating) return;
+  const g = state.games[state.gameIdx];
+
+  state.socket.emit("vote", {
+    code:        state.roomCode,
+    player_name: state.myPlayer,
+    appid:       g.appid,
+    liked:       liked,
+  });
+  state.votes[g.appid] = liked;
+
+  // Animate off-screen
+  state.animating = true;
+  const dir = liked ? 600 : -600;
+  setCardTransform(dir);
+  document.getElementById("ov-play").style.opacity = liked ? 1 : 0;
+  document.getElementById("ov-pass").style.opacity = liked ? 0 : 1;
+  document.getElementById("card-wrap").style.transition = "transform .32s cubic-bezier(.25,.46,.45,.94)";
+  document.getElementById("btn-like").disabled = true;
+  document.getElementById("btn-pass").disabled = true;
+
+  setTimeout(() => {
+    state.animating = false;
+    document.getElementById("card-wrap").style.transition = "";
+    document.getElementById("btn-like").disabled = false;
+    document.getElementById("btn-pass").disabled = false;
+    state.gameIdx++;
+    loadCard(state.gameIdx);
+  }, 340);
+}
+
+function setCardTransform(x) {
+  const rot = x * 0.034;
+  document.getElementById("card-wrap").style.transform = `translateX(${x}px) rotate(${rot}deg)`;
+}
+
+function finishSwiping() {
+  state.socket.emit("player_done", { code: state.roomCode, player_name: state.myPlayer });
+  // Show waiting screen
+  const allNames = state.players.map(p => p.name);
+  renderWaiting([], allNames.length);
+  showPhase("ph-waiting");
+}
+
+// ── Drag ─────────────────────────────────────────────────────────────────
+function dragStart(e) {
+  if (state.animating) return;
+  const x = e.touches ? e.touches[0].clientX : e.clientX;
+  state.drag = { active: true, startX: x, offsetX: 0 };
+}
+function dragMove(e) {
+  if (!state.drag.active || state.animating) return;
+  const x = e.touches ? e.touches[0].clientX : e.clientX;
+  const off = x - state.drag.startX;
+  state.drag.offsetX = off;
+  setCardTransform(off);
+  const r = Math.min(Math.abs(off) / 110, 1);
+  document.getElementById("ov-play").style.opacity = off > 25 ? r : 0;
+  document.getElementById("ov-pass").style.opacity = off < -25 ? r : 0;
+}
+function dragEnd(e) {
+  if (!state.drag.active) return;
+  state.drag.active = false;
+  if (Math.abs(state.drag.offsetX) > 90) {
+    vote(state.drag.offsetX > 0);
+  } else {
+    document.getElementById("card-wrap").style.transition = "transform .22s ease";
+    setCardTransform(0);
+    document.getElementById("ov-play").style.opacity = 0;
+    document.getElementById("ov-pass").style.opacity = 0;
+    setTimeout(() => { document.getElementById("card-wrap").style.transition = ""; }, 240);
+  }
+}
+
+// ── Waiting screen ────────────────────────────────────────────────────────
+function renderWaiting(donePlayers, total) {
+  const list = document.getElementById("waiting-players");
+  list.innerHTML = "";
+  state.players.forEach(p => {
+    const done = donePlayers.includes(p.name);
+    const row  = document.createElement("div");
+    row.className = "waiting-row";
+    row.innerHTML = `
+      <div class="waiting-dot ${done ? "dot-done" : "dot-waiting"}"></div>
+      <span style="font-size:14px;color:${done ? "#e8edf5" : "rgba(255,255,255,.4)"}">${p.name}</span>
+      <span style="margin-left:auto;font-size:12px;font-family:'Space Mono',monospace;color:${done ? "#0d7a50" : "rgba(255,255,255,.2)"}">${done ? "done ✓" : "swiping…"}</span>
+    `;
+    list.appendChild(row);
+  });
+  const pct = total > 0 ? (donePlayers.length / total) * 100 : 0;
+  document.getElementById("waiting-bar").style.width  = pct + "%";
+  document.getElementById("waiting-count").textContent = `${donePlayers.length} of ${total} done`;
+}
+
+function updateWaiting(d) {
+  renderWaiting(d.done_players, d.total);
+}
+
+// ── Results ───────────────────────────────────────────────────────────────
+function showResults(d) {
+  const matched = d.matched_games;
+  const players  = d.players;
+  const votes    = d.votes;
+
+  document.getElementById("results-title").textContent =
+    matched.length > 0 ? "🎮 Let's Play!" : "No Matches";
+  document.getElementById("results-sub").textContent =
+    matched.length > 0
+      ? `${matched.length} game${matched.length !== 1 ? "s" : ""} everyone wants to play`
+      : "Nobody agreed — try again!";
+
+  // Player avatars with vote counts
+  const avatarWrap = document.getElementById("results-avatars");
+  avatarWrap.innerHTML = "";
+  players.forEach((p, i) => {
+    const liked = Object.values(votes[p.name] || {}).filter(Boolean).length;
+    const color  = COLORS[i % COLORS.length];
+    const el     = document.createElement("div");
+    el.style.cssText = `display:flex;align-items:center;gap:6px;background:${color}18;border:1px solid ${color}44;border-radius:8px;padding:5px 10px`;
+    el.innerHTML = p.avatar
+      ? `<img src="${p.avatar}" style="width:20px;height:20px;border-radius:50%;object-fit:cover">`
+      : `<div style="width:20px;height:20px;border-radius:50%;background:${color}33;display:flex;align-items:center;justify-content:center;font-size:10px;color:${color};font-weight:700">${p.name[0]}</div>`;
+    el.innerHTML += `<span style="font-size:12px;color:rgba(255,255,255,.6)">${p.name}</span>
+      <span style="font-size:12px;color:${color};font-family:'Space Mono',monospace">${liked}✓</span>`;
+    avatarWrap.appendChild(el);
+  });
+
+  // Game list
+  const list     = document.getElementById("results-list");
+  list.innerHTML  = "";
+  const showList  = matched.length > 0 ? matched : d.games.slice(0, 12);
+  const isMatched = matched.length > 0;
+
+  showList.forEach((g, i) => {
+    const gv  = votes;
+    const a   = document.createElement("a");
+    a.href    = `https://store.steampowered.com/app/${g.appid}`;
+    a.target  = "_blank";
+    a.rel     = "noopener noreferrer";
+    a.className = "result-row" + (isMatched ? "" : " no-match");
+    a.style.animationDelay = (i * 0.04) + "s";
+    a.style.animation = `up .3s ease both`;
+
+    const voteHtml = players.map((p, pi) => {
+      const v = (gv[p.name] || {})[g.appid];
+      return `<span class="vote-chip" style="color:${v===true ? COLORS[pi%COLORS.length] : "rgba(255,255,255,.18)"}">
+        ${v===true ? "✓" : "✕"} ${p.name.split(" ")[0]}
+      </span>`;
+    }).join("");
+
+    a.innerHTML = `
+      <img class="result-thumb" src="https://cdn.akamai.steamstatic.com/steam/apps/${g.appid}/header.jpg" alt="" onerror="this.style.opacity=0">
+      <div style="flex:1;min-width:0">
+        <div class="result-name">${g.name}</div>
+        <div class="result-votes">${voteHtml}</div>
+      </div>
+      <span style="font-size:13px;color:#4c9eff;flex-shrink:0">↗</span>
+    `;
+    list.appendChild(a);
+  });
+
+  if (!isMatched) {
+    const note = document.createElement("p");
+    note.style.cssText = "font-size:12px;color:rgba(255,255,255,.2);text-align:center";
+    note.textContent   = "No full matches — showing all shared games";
+    list.appendChild(note);
+  }
+
+  showPhase("ph-results");
+}
+
+// ── Misc ──────────────────────────────────────────────────────────────────
+function resetApp() {
+  state.roomCode = "";
+  state.myPlayer = "";
+  state.players  = [];
+  state.games    = [];
+  state.gameIdx  = 0;
+  state.votes    = {};
+  window._claimed = [];
+  document.getElementById("join-code").value = "";
+  showPhase("ph-home");
+}
+
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent  = msg;
+  t.style.display = "block";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.style.display = "none"; }, 4000);
+}
+</script>
+</body>
+</html>
